@@ -1,0 +1,32 @@
+const fs = require('fs');
+const path = require('path');
+
+const controllers = {
+  'src/controllers/meetupController.js': `const Meetup = require('../models/Meetup');\nconst { successResponse, errorResponse } = require('../utils/apiResponse');\n\nexports.getMeetups = async (req, res) => {\n  try {\n    const query = {};\n    if (req.query.status) query.status = req.query.status;\n    if (req.query.category) query.category = req.query.category;\n    if (req.query.featured) query.isFeatured = req.query.featured === 'true';\n    \n    const meetups = await Meetup.find(query).sort({ date: 1 });\n    return successResponse(res, 200, 'Meetups fetched successfully', meetups);\n  } catch (error) {\n    return errorResponse(res, 500, 'Server Error', error);\n  }\n};\n\nexports.getMeetupById = async (req, res) => {\n  try {\n    const meetup = await Meetup.findById(req.params.id);\n    if (!meetup) return errorResponse(res, 404, 'Meetup not found');\n    return successResponse(res, 200, 'Meetup fetched successfully', meetup);\n  } catch (error) {\n    return errorResponse(res, 500, 'Server Error', error);\n  }\n};\n`,
+  
+  'src/controllers/authController.js': `const User = require('../models/User');\nconst generateToken = require('../utils/generateToken');\nconst { successResponse, errorResponse } = require('../utils/apiResponse');\n\nexports.registerUser = async (req, res) => {\n  try {\n    const { name, email, phone, password, instagramUsername } = req.body;\n    const userExists = await User.findOne({ email });\n    if (userExists) return errorResponse(res, 400, 'User already exists');\n\n    const user = await User.create({ name, email, phone, password, instagramUsername });\n    if (user) {\n      return successResponse(res, 201, 'User registered successfully', {\n        _id: user._id, name: user.name, email: user.email, role: user.role, token: generateToken(user._id)\n      });\n    }\n    return errorResponse(res, 400, 'Invalid user data');\n  } catch (error) {\n    return errorResponse(res, 500, 'Server Error', error);\n  }\n};\n\nexports.loginUser = async (req, res) => {\n  try {\n    const { email, password } = req.body;\n    const user = await User.findOne({ email });\n    if (user && (await user.matchPassword(password))) {\n      return successResponse(res, 200, 'Login successful', {\n        _id: user._id, name: user.name, email: user.email, role: user.role, token: generateToken(user._id)\n      });\n    }\n    return errorResponse(res, 401, 'Invalid email or password');\n  } catch (error) {\n    return errorResponse(res, 500, 'Server Error', error);\n  }\n};\n\nexports.getMe = async (req, res) => {\n  return successResponse(res, 200, 'User details fetched', req.user);\n};\n`,
+
+  'src/controllers/momentController.js': `const Moment = require('../models/Moment');\nconst { successResponse, errorResponse } = require('../utils/apiResponse');\n\nexports.getMoments = async (req, res) => {\n  try {\n    const moments = await Moment.find({ isPublished: true }).sort({ createdAt: -1 });\n    return successResponse(res, 200, 'Moments fetched successfully', moments);\n  } catch (error) {\n    return errorResponse(res, 500, 'Server Error', error);\n  }\n};\n`,
+
+  'src/controllers/joinController.js': `const JoinRequest = require('../models/JoinRequest');\nconst { successResponse, errorResponse } = require('../utils/apiResponse');\n\nexports.createJoinRequest = async (req, res) => {\n  try {\n    const { name, phone, reason } = req.body;\n    const user = req.user ? req.user._id : undefined;\n    const joinRequest = await JoinRequest.create({ name, phone, reason, user });\n    return successResponse(res, 201, 'Join request submitted successfully', joinRequest);\n  } catch (error) {\n    return errorResponse(res, 500, 'Server Error', error);\n  }\n};\n`,
+
+  'src/controllers/registrationController.js': `const Registration = require('../models/Registration');\nconst Meetup = require('../models/Meetup');\nconst { successResponse, errorResponse } = require('../utils/apiResponse');\n\nexports.createRegistration = async (req, res) => {\n  try {\n    const { meetupId, name, phone, email } = req.body;\n    const meetup = await Meetup.findById(meetupId);\n    if (!meetup) return errorResponse(res, 404, 'Meetup not found');\n    if (meetup.status !== 'upcoming') return errorResponse(res, 400, 'Meetup is not upcoming');\n    if (meetup.registeredCount >= meetup.capacity) return errorResponse(res, 400, 'Meetup is full');\n\n    const exists = await Registration.findOne({ meetup: meetupId, user: req.user._id });\n    if (exists) return errorResponse(res, 400, 'Already registered');\n\n    const registration = await Registration.create({ meetup: meetupId, user: req.user._id, name, phone, email });\n    meetup.registeredCount += 1;\n    await meetup.save();\n\n    return successResponse(res, 201, 'Registration successful', registration);\n  } catch (error) {\n    return errorResponse(res, 500, 'Server Error', error);\n  }\n};\n`
+};
+
+for (const [filepath, content] of Object.entries(controllers)) {
+  fs.writeFileSync(path.join(__dirname, filepath), content);
+}
+
+// Also update routes
+const routes = {
+  'src/routes/meetupRoutes.js': `const express = require('express');\nconst router = express.Router();\nconst { getMeetups, getMeetupById } = require('../controllers/meetupController');\nrouter.get('/', getMeetups);\nrouter.get('/:id', getMeetupById);\nmodule.exports = router;\n`,
+  'src/routes/momentRoutes.js': `const express = require('express');\nconst router = express.Router();\nconst { getMoments } = require('../controllers/momentController');\nrouter.get('/', getMoments);\nmodule.exports = router;\n`,
+  'src/routes/joinRoutes.js': `const express = require('express');\nconst router = express.Router();\nconst { createJoinRequest } = require('../controllers/joinController');\nrouter.post('/', createJoinRequest);\nmodule.exports = router;\n`,
+  'src/routes/registrationRoutes.js': `const express = require('express');\nconst router = express.Router();\nconst { createRegistration } = require('../controllers/registrationController');\nconst { protect } = require('../middleware/authMiddleware');\nrouter.post('/', protect, createRegistration);\nmodule.exports = router;\n`
+};
+
+for (const [filepath, content] of Object.entries(routes)) {
+  fs.writeFileSync(path.join(__dirname, filepath), content);
+}
+
+console.log('Controllers and Routes updated.');
