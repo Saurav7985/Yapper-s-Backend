@@ -4,6 +4,11 @@ const { successResponse, errorResponse } = require('../utils/apiResponse');
 exports.createJoinRequest = async (req, res) => {
   try {
     const { name, phone, reason } = req.body;
+    
+    if (!name || !phone) {
+      return errorResponse(res, 400, 'Name and phone number are required');
+    }
+
     const user = req.user ? req.user._id : undefined;
     const joinRequest = await JoinRequest.create({ name, phone, reason, user });
     return successResponse(res, 201, 'Join request submitted successfully', joinRequest);
