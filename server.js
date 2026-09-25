@@ -1,4 +1,13 @@
 require('dotenv').config();
+
+const requiredEnvVars = ['MONGO_URI', 'JWT_SECRET', 'CLIENT_URL'];
+const missingEnvVars = requiredEnvVars.filter((envVar) => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+  console.error(`Missing required environment variable(s): ${missingEnvVars.join(', ')}`);
+  process.exit(1);
+}
+
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
 
